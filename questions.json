@@ -1,0 +1,16 @@
+[
+    {
+        "question": "How are you today?",
+        "scale": {
+            "min": "Super awful",
+            "max": "Incredible!"
+        }
+    },
+    {
+        "question": "Do you like pancakes?",
+        "scale": {
+            "min": "They taste like shoes",
+            "max": "I make sweet love to them"
+        }
+    }
+]
