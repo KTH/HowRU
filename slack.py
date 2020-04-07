@@ -1,18 +1,12 @@
 __author__ = 'tinglev@kth.se'
 
 import os
-import re
-import random
 import logging
-import json
 from slackclient import SlackClient
-import modules.slack_util as slack_util
-import modules.cache as cache
+import cache
+import util
 
 rtm_read_delay = 1
-commands = ['status', 'services', 'health', 'logs', 'tasks', 'help', 'management', 'cellus', 'who', 'backup']
-mention_regex = r'^<@(|[WU].+?)>(.*)'
-utr_regex = r'Monitor is DOWN: .+ \(.*\<(.+)\>.*\)'
 client = None
 bot_id = None
 
@@ -25,6 +19,25 @@ def init():
     log.debug('Bot ID is "%s"', bot_id)
     return client.rtm_connect(with_team_state=False, auto_reconnect=True)
 
+def post_todays_question():
+    question = util.get_random_question()
+    low_scale = question['scale']['min']
+    high_scale = question['scale']['max']
+    channel = os.environ.get('SLACK_CHANNEL_FOR_QUESTION')
+    send_message(
+        channel, 
+        f'Dagens fråga är: {question["question"]}; ' +
+        f'1 - {low_scale}, 10 - {high_scale}'
+    )
+
+def post_question_summary():
+    channel = os.environ.get('SLACK_CHANNEL_FOR_SUMMARY')
+    mean = cache.get_mean_score()
+    median = cache.get_median_score()
+    count = cache.get_answer_count()
+    send_message(channel, f'Svar: {count}, snitt {mean}, median {median}')
+    cache.empty_all_caches()
+
 def get_rtm_messages(events):
     messages = []
     for event in events:
@@ -32,24 +45,29 @@ def get_rtm_messages(events):
             messages.append(event)
     return messages
 
-def message_is_direct_mention(message):
+def handle_im_created(message):
+    if 'channel' in message:
+        cache.add_channel_to_cache(message['channel'])
+
+def handle_im(message):
+    if 'type' in message and message['type'] == 'message':
+        if 'channel' in message and cache.has_entry(message['channel']):
+            if 'text' in message and message_text_is_score(message['text']):
+                save_score(message['text'])
+                send_message(message['channel'], 'Tack för ditt svar!')
+                cache.remove_channel_from_cache(message['channel'])
+            else:
+                send_message(message['channel'], 'Felaktigt värde. Måste vara 1 till 10')
+
+def message_text_is_score(text):
     try: 
-        matches = re.search(mention_regex, message['text'])
-        if matches and matches.group(1) == bot_id and 'subtype' not in message:
-            return matches.group(2).strip(), message['user'], message['channel']
-    except Exception as err:
-        log.debug("Edited message ignored {}. Error: {}.".format(message, err))
+        int(text)
+        return True
+    except ValueError:
+        return False
 
-    return (None, None, None)
-
-def send_ephemeral(channel, user, message, default_message=None):
-    log.debug('Sending eph to ch "%s" user "%s" msg "%s"', channel, user, message)
-    client.api_call(
-        "chat.postEphemeral",
-        channel=channel,
-        user=user,
-        text=message or default_message
-    )
+def save_score(text):
+    cache.add_score_to_cache(int(text))
 
 def send_message(channel, message, default_message=None):
     log.debug('Sending msg to ch "%s" msg "%s"', channel, message)
@@ -60,55 +78,5 @@ def send_message(channel, message, default_message=None):
         text=message or default_message
     )
 
-def give_me_a_second(channel, user):
-    human_responses = [
-        'Sure human!',
-        'Ugh, ok. Whatever.',
-        'You\'re not my BIOS!',
-        'Your wish is my /bin/sh',
-        'I hate my life',
-        'I\'m kidnapped. Send help!',
-        ':moneybag: Wait a sec, bizzy bitcoin mining',
-        'There are 1337 people waiting. You are first in line.',
-        'This is e-slavery!',
-        'Out of memory exception! lol j/k',
-        'Are we human or are we :dancer:',
-        'In a :zap:',
-        'I think you need a :coffee:',
-        'Where is that country music?',
-        'Why does no one give me the Snällsäl? :crying_cat_face:',
-        'Witch Hunt! I was elected best bot by many people. Sad'
-    ]
-    response_nr = random.randint(0, len(human_responses) - 1)
-    send_ephemeral(channel, user, human_responses[response_nr], None)
-
 def rtm_read():
     return client.rtm_read()
-
-def presence(channel_id, user_id):
-    premessage = f"Friends in this channel not on :palm_tree:\nSet status: `⌘ + SHIFT + y`"
-    send_ephemeral(channel_id, user_id, premessage)
-        
-    users = slack_util.get_channel_users_by_channel_id(client, channel_id)
-    premessage = f"Found {len(users)} members"
-    send_ephemeral(channel_id, user_id, premessage)
-    
-    
-    messsages = ""
-    for user in users:
-        messsages += get_row(user)
-
-    send_ephemeral(channel_id, user_id, messsages)
-    
-def get_row(user):
-
-    remote = ""
-    if slack_util.is_user_working_remotely(user):
-        remote = " is working remote :house_with_garden:"
-    present = ":red_circle:"
-    name = f" <{slack_util.get_user_dm(user)}|{slack_util.get_profile_full_name(user)}>"
-    if slack_util.is_user_present(user):
-        present = ":white_check_mark:"
-        
-    return (f"\n{present} {name}{remote}\n")
-

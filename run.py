@@ -1,14 +1,15 @@
 import logging
 import time
 import slack
+import schedule
 import log as log_module
+import util
 
 log_module.init_logging()
 log = logging.getLogger(__name__)
 
-# On time, write todays question to #section-sfu
-# register DMs sent to the bot and save in memory
-# On time, write summary to #section-sfu
+schedule.every().day.at("09:00").do(slack.post_todays_question())
+schedule.every().day.at("15:00").do(slack.post_question_summary())
 
 def main():
     try:
@@ -16,6 +17,7 @@ def main():
             log.info("Everest Bot connected and running!")
 
             while True:
+                schedule.run_pending()
                 log.debug('Check for new messages sent to the bot.')
                 rtm_messages = []
                 try:
@@ -27,11 +29,8 @@ def main():
                               len(rtm_messages))
                 for message in rtm_messages:
                     log.debug('Handling message "%s"', message)
-                    command, user, channel = slack.message_is_direct_mention(
-                        message)
-                    if command:
-                        handle_command(command, channel, user)
-                    url, channel = slack.message_is_utr_down(message)
+                    slack.handle_im_created(message)
+                    slack.handle_im(message)
                 time.sleep(slack.rtm_read_delay)
         else:
             log.error("Connection to Slack failed!")
