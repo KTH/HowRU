@@ -52,12 +52,17 @@ def handle_im_created(message):
 def handle_im(message):
     if 'type' in message and message['type'] == 'message':
         if 'channel' in message and cache.has_entry(message['channel']):
-            if 'text' in message and message_text_is_score(message['text']):
-                save_score(message['text'])
+            if message_is_ok(message):
                 send_message(message['channel'], 'Tack för ditt svar!')
                 cache.remove_channel_from_cache(message['channel'])
             else:
                 send_message(message['channel'], 'Felaktigt värde. Måste vara 1 till 10')
+
+def message_is_ok(message):
+    return ('text' in message 
+            and message_text_is_score(message['text'])
+            and int(message['text']) >= 1 
+            and int(message['text']) <= 10)
 
 def message_text_is_score(text):
     try: 
