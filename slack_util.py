@@ -1,23 +1,23 @@
 __author__ = 'tinglev@kth.se'
 
 import os
+from threading import Thread
 import logging
-from slackclient import SlackClient
+from slack import WebClient, RTMClient
 import cache
 import util
 
 rtm_read_delay = 1
-client = None
-bot_id = None
 
 log = logging.getLogger(__name__)
 
 def init():
-    global client, bot_id
-    client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'))
-    bot_id = client.api_call("auth.test")["user_id"]
-    log.debug('Bot ID is "%s"', bot_id)
-    return client.rtm_connect(with_team_state=False, auto_reconnect=True)
+    client = RTMClient(token=os.environ.get('SLACK_API_TOKEN'))
+    client.start()    
+    #bot_id = client.api_call("auth.test")["user_id"]
+    #log.debug('Bot ID is "%s"', bot_id)
+    #thread.start()
+    #return client.rtm_connect(with_team_state=False, auto_reconnect=True)
 
 def post_todays_question():
     question = util.get_random_question()
@@ -49,7 +49,9 @@ def handle_im_created(message):
     if 'channel' in message:
         cache.add_channel_to_cache(message['channel'])
 
-def handle_im(message):
+@RTMClient.run_on(event='message')
+def handle_im(**payload):
+    message = payload['data']
     if 'type' in message and message['type'] == 'message':
         if 'channel' in message and cache.has_entry(message['channel']):
             if message_is_ok(message):
@@ -76,9 +78,8 @@ def save_score(text):
 
 def send_message(channel, message, default_message=None):
     log.debug('Sending msg to ch "%s" msg "%s"', channel, message)
-
-    client.api_call(
-        "chat.postMessage",
+    client = WebClient(token=os.environ['SLACK_API_TOKEN'])
+    client.chat_postMessage(
         channel=channel,
         text=message or default_message
     )

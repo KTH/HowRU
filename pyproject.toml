@@ -7,10 +7,10 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.7"
-slackclient = "^2.5"
 requests = "^2.23"
 coloredlogs = "^14.0"
 schedule = "^0.6.0"
+slackclient = "^2.5"
 
 [tool.poetry.dev-dependencies]
 
